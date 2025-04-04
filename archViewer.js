@@ -395,7 +395,7 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 
 			// var XAxis_Change_Type = {"NewPlot":1, "ReplaceTraces":2, "LeftPan":3, "RightPan":4};
 			switch(xAxisChangeType) {
-			case "LeftPan":
+			case "LeftPan": {
 				let previousDataSetFirstSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].getTime();
 				console.log(data['data'].length + " samples from the server " + myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].toString());
 
@@ -404,12 +404,14 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 				viewerVars.pvData[pvName].update = { x: secs, y: vals };
 				console.log(secs.length + " after processing");
 				break;
-			case "RightPan":
+			}
+			case "RightPan": {
 				let previousDataSetLastSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x.slice(-1)[0].getTime();
 				let secs = data['data'].filter(function(sample){ return (sample['millis']) > previousDataSetLastSampleMillis; }).map(function(sample) { return new Date(sample['millis']); });
 				let vals = data['data'].filter(function(sample){ return (sample['millis']) > previousDataSetLastSampleMillis; }).map(function(sample) { return sample['val']; });
 				viewerVars.pvData[pvName].update = { x: secs, y: vals };
 				break;
+			}
 			case "ReplaceTraces":
 			case "NewPlot":
 			case "AddNewTrace":
@@ -1221,7 +1223,7 @@ $(document).ready( function() {
 			if(e.pageX >= leftOffset && e.pageX <= (leftOffset + bRect.width) && e.pageY >= topOffset && e.pageY <= (topOffset + bRect.height)) { // console.log("We are within the X-Axis label now");
 				try {
 					var ppl = xaxisDom.children[0].getBBox().x; var bnl = ppl + xaxisDom.children[0].getComputedTextLength();
-				} catch(e) {
+				} finally {
 					var ppl = xaxisDom.children[0].getBoundingClientRect().left + window.scrollX; var bnl = ppl + xaxisDom.children[0].getComputedTextLength();
 				}
 				if(e.pageX >= ppl && e.pageX <= bnl ) {
