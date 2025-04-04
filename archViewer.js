@@ -49,9 +49,9 @@ viewerVars.currentSnapshot = null;
 viewerVars.currentButton = '';
 
 // last interval choice
-var lastInterval = null;
+let lastInterval = null;
 // last time unit choice
-var lastUnit = null;
+let lastUnit = null;
 
 // This is one of the integration points with the server.
 // This should default to a path relative location that works from the appliance UI.
@@ -262,8 +262,6 @@ function processChangesOnXAxis(eventdata) {
 			viewerVars.start = moment(eventdata['xaxis2.range[0]']).toDate();
 			viewerVars.end = moment(eventdata['xaxis2.range[1]']).toDate();
 		}
-		var previousDuration = previousEnd.getTime() - previousStart.getTime();
-		var duration = viewerVars.end.getTime() - viewerVars.start.getTime();
 
 		if(viewerVars.currentBinningOperator.startsWith('errorbar')) {
 			viewerVars.queryStart = viewerVars.start;
@@ -277,12 +275,11 @@ function processChangesOnXAxis(eventdata) {
 		viewerVars.queryEnd = viewerVars.end;
 		fetchDataFromServerAndPlot("ReplaceTraces");
 
-		var liveButtonCount = calculateLiveCount();
-		//if(duration == liveButtonCount && viewerVars.liveModeTimer == null) {
+		calculateLiveCount();
 		if(viewerVars.currentButton == "Live") {
 			if(viewerVars.liveModeTimer != null) clearInterval(viewerVars.liveModeTimer);
 			console.log("Kicking off live mode..");
-			var layoutChanges = {'xaxis' : { 'autorange' : false}};
+			let layoutChanges = {'xaxis' : { 'autorange' : false}};
 			layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
 			layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
 			layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
@@ -294,11 +291,11 @@ function processChangesOnXAxis(eventdata) {
 				console.log("Entering static mode..");
 				clearInterval(viewerVars.liveModeTimer);
 				viewerVars.liveModeTimer = null;
-				var buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
+				let buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
 				viewerVars.selectorOptions.buttons[buttonIndex].step = 'minute';
 				viewerVars.selectorOptions.buttons[buttonIndex].count = 7;
 			
-				var layoutChanges = {'xaxis' : { 'autorange' : false}};
+				let layoutChanges = {'xaxis' : { 'autorange' : false}};
 				layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
 				layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
 				layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
@@ -320,10 +317,10 @@ function processChangesOnXAxis(eventdata) {
 function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 	if(viewerVars.pvs.length == 0) { return; }
 
-	var pvsToFetchData = (xAxisChangeType == "AddNewTrace") ? newTracePVNames : viewerVars.pvs;
-	var pvDataPromises = _.times(pvsToFetchData.length, function() { return new $.Deferred()}), datas = new Array(pvsToFetchData.length);
+	let pvsToFetchData = (xAxisChangeType == "AddNewTrace") ? newTracePVNames : viewerVars.pvs;
+	let pvDataPromises = _.times(pvsToFetchData.length, function() { return new $.Deferred()}), datas = new Array(pvsToFetchData.length);
 	_.each(pvsToFetchData, function(pvName, i) {
-		var queryString = "";
+		let queryString = "";
 		if(viewerVars.binSize > 0) {
 			if (viewerVars.currentBinningOperator == "raw") {
 				queryString = "pv="  + pvName;
@@ -333,16 +330,16 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 		} else {
 			queryString = "pv=" + pvName;
 		}
-		var startEndQs = "&from="+viewerVars.queryStart.toISOString()+"&to="+viewerVars.queryEnd.toISOString();
+		let startEndQs = "&from="+viewerVars.queryStart.toISOString()+"&to="+viewerVars.queryEnd.toISOString();
 
 		if(viewerVars.binSize > 0) {
-			var binnedQueryStart = new Date(Math.floor(viewerVars.queryStart.getTime()/(viewerVars.binSize*1000))*viewerVars.binSize*1000);
+			let binnedQueryStart = new Date(Math.floor(viewerVars.queryStart.getTime()/(viewerVars.binSize*1000))*viewerVars.binSize*1000);
 			console.log("Starting binned data retrieval from " + binnedQueryStart.toISOString());
 			startEndQs = "&from="+binnedQueryStart.toISOString()+"&to="+viewerVars.queryEnd.toISOString();
 		}
 		if (!('DESC' in viewerVars.pvData[pvName])) { startEndQs += "&fetchLatestMetadata=true"}
 
-		var pvDataUrl = viewerVars.serverURL + "/getData.qw?" + queryString + startEndQs;
+		let pvDataUrl = viewerVars.serverURL + "/getData.qw?" + queryString + startEndQs;
 		console.log(pvDataUrl);
 		$.getJSON(pvDataUrl).done(function(d0){datas[i] = d0; pvDataPromises[i].resolve(true)}).fail(function(jqXHR, textStatus, errorThrown){console.log("Server side failure getting data for " + pvName + "\n" + jqXHR.responseText); datas[i] = {}; pvDataPromises[i].resolve(false)});
 	})
@@ -357,9 +354,9 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 			let data = datas[i][0];
 			if(_.isNil(data) || !_.includes(_.keys(data), "meta")) { console.log("Empty dataset for PV at" + i); console.log(data); continue}
 			// arguments[i] is the result of the .getJSON; the data is in [0]. The server sends this as an array hence the additional [0]
-			var pvName = data['meta'].name;
+			let pvName = data['meta'].name;
 			console.log("Plotting " + pvName);
-			var egu = data['meta']['EGU'];
+			let egu = data['meta']['EGU'];
 			if(typeof egu == 'undefined' || !egu || egu.length <= 0) { egu = 'N/A'; }
 			if(!('egu' in viewerVars.pvData[pvName])) {
 				viewerVars.pvData[pvName].egu = egu;
@@ -542,8 +539,8 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 
 // The modebar is specified in the plotConfig. Use icons from font-awesome to create our modebar buttons.
 function generatePlotConfig() {
-	var bPhone = (window.screen.availHeight > window.screen.availWidth) ? true : false;
-	var newModeBarButtons = [];
+	let bPhone = (window.screen.availHeight > window.screen.availWidth) ? true : false;
+	let newModeBarButtons = [];
 
 	newModeBarButtons.push({ name: 'Start/End',
 		icon: viewerVars.icons['regular/calendar-alt'],
@@ -601,7 +598,7 @@ function generatePlotConfig() {
 
 
 	// Add mode bar buttons for start+end time etc
-	var plotConfig = {
+	let plotConfig = {
 			displaylogo: false,
 			modeBarButtonsToAdd: newModeBarButtons,
 			modeBarButtonsToRemove: bPhone ? ['sendDataToCloud', 'toggleSpikelines', 'toImage', 'toggleHover', 'hoverClosestCartesian', 'hoverCompareCartesian'] : ['sendDataToCloud']
@@ -611,7 +608,7 @@ function generatePlotConfig() {
 
 // The search modebar buttons will eventually call this function to add a new PV to the plot.
 function addTraceForNewPVs(pvNames) {
-	var addingForTheFirstTime = (viewerVars.pvs.length == 0);
+	let addingForTheFirstTime = (viewerVars.pvs.length == 0);
 	viewerVars.pvs = viewerVars.pvs.concat(pvNames);
 	pvNames.forEach(function(nm,i) { viewerVars.pvData[nm] = {}; });
 	console.log("Adding " + pvNames + " to traces");
@@ -757,14 +754,14 @@ function reflectBinSizeColorOnLegend() {
 // Functions for the page start here.
 
 function liveModeTick() { // Timer function for the live mode tick...
-	var liveButtonCount = calculateLiveCount();
-	var now = new Date();
+	let liveButtonCount = calculateLiveCount();
+	let now = new Date();
 	viewerVars.end = now;
 	viewerVars.start = new Date(now.getTime() - liveButtonCount);
 	viewerVars.queryStart = viewerVars.start;
 	viewerVars.queryEnd = viewerVars.end;
 
-	var layoutChanges = {'xaxis' : { 'autorange' : false}};
+	let layoutChanges = {'xaxis' : { 'autorange' : false}};
 	layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
 	layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
 	layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
@@ -784,14 +781,14 @@ function startAndEndTimeSelected() {
 	viewerVars.queryEnd = viewerVars.end;
 
 	if(viewerVars.plotType == viewerVars.plotTypeEnum.SCATTER_2D) {
-		var currXAxis = myDiv.layout.xaxis;
+		let currXAxis = myDiv.layout.xaxis;
 		layoutChanges = {'xaxis': { 'autorange' : false }};
 		layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
 		layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
 		layoutChanges.xaxis.domain = currXAxis.domain;
 		Plotly.relayout(myDiv, layoutChanges);
 	} else {
-		var currXAxis = myDiv.layout.xaxis2;
+		let currXAxis = myDiv.layout.xaxis2;
 		layoutChanges = {'xaxis2': { 'autorange' : false }};
 		layoutChanges.xaxis2.rangeselector = viewerVars.selectorOptions;
 		layoutChanges.xaxis2.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
@@ -806,9 +803,9 @@ function startAndEndTimeSelected() {
 
 // User typed a pattern, we search for PV's matching this pattern.
 function searchForPVsMatchingPattern() {
-	var pattern = $("#pvNamePattern").val();
+	let pattern = $("#pvNamePattern").val();
 	console.log("Search and add PVs for pattern " + pattern);
-	var list = $("#pvNameSearchMatchingList");
+	let list = $("#pvNameSearchMatchingList");
 	list.empty();
 	$("#pvNameSearchMatchingError").empty();
 	$.getJSON( viewerVars.serverURL + "/../bpl/getMatchingPVs?limit=10000&pv=" + pattern, function(matchingPVs){
@@ -826,7 +823,7 @@ function searchForPVsMatchingPattern() {
 }
 
 function addSelectedSearchPVs(e) {
-	var selectedPVs = [];
+	let selectedPVs = [];
 	$("#pvNameSearchMatchingList li.list-group-item-info").each(function(index) { selectedPVs.push($(this).text())});
 	if(selectedPVs.length > 0) {
         $('#searchAndAddPVsModal').modal('hide');
@@ -837,7 +834,7 @@ function addSelectedSearchPVs(e) {
 }
 
 function fixBinSize() {
-	var binSize = parseInt($("#binSizeInput").val());
+	let binSize = parseInt($("#binSizeInput").val());
 	if(binSize > 0) {
 		viewerVars.userFixedBinSize = true;
 		viewerVars.binSize = binSize;
@@ -849,11 +846,11 @@ function fixBinSize() {
 
 // When you click on a y-axis, toggle between a log/linear scale.
 function toggleLinearLogScale(egu) {
-	var shortAxis = viewerVars.egu2axis[egu];
-	var longAxis = viewerVars.y_short_2_long[shortAxis];
-	var currentType = myDiv.layout[longAxis]['type'];
-	var newType = (currentType == "linear") ? "log" : "linear";
-	var newTitle = (newType == "linear") ? egu : ("log(" + egu + ")");
+	let shortAxis = viewerVars.egu2axis[egu];
+	let longAxis = viewerVars.y_short_2_long[shortAxis];
+	let currentType = myDiv.layout[longAxis]['type'];
+	let newType = (currentType == "linear") ? "log" : "linear";
+	let newTitle = (newType == "linear") ? egu : ("log(" + egu + ")");
 	console.log("Changing scale for " + egu + " to " + newType);
 	myDiv.layout[longAxis]['type'] = newType;
 	myDiv.layout[longAxis]['title'] = newTitle;
@@ -905,10 +902,10 @@ function getCurrentDataAsDict() {
 
 // Popup a modal with the data for the current plot.
 function showChartDataAsText() {
-	var d = getCurrentDataAsDict();
-	var names = d[0];
-	var tbl = d[1];
-	var htmlContent = "<table id='showDataTable' class='table table-striped table-bordered table-condensed'><tr><th>Time</th><th>" + names.join("</th><th>") + "</th></tr>\n";
+	let d = getCurrentDataAsDict();
+	let names = d[0];
+	let tbl = d[1];
+	let htmlContent = "<table id='showDataTable' class='table table-striped table-bordered table-condensed'><tr><th>Time</th><th>" + names.join("</th><th>") + "</th></tr>\n";
 	Object.keys(tbl).sort().forEach(function(key) { htmlContent += "<tr><td>" + moment(key).format("YYYY/MM/DD HH:mm:ss.SSS") + "</td><td>" + tbl[key].join("</td><td>") + "</td></tr>\n"; });
 	$("#showDataTableDiv").empty();
 	$("#showDataTableDiv").append(htmlContent);
@@ -916,9 +913,9 @@ function showChartDataAsText() {
 }
 
 function exportToCSV() {
-	var d = getCurrentDataAsDict();
-	var names = d[0];
-	var tbl = Object.fromEntries(Object.entries(d[1]).sort());
+	let d = getCurrentDataAsDict();
+	let names = d[0];
+	let tbl = Object.fromEntries(Object.entries(d[1]).sort());
 	
 	if (viewerVars.replaceNA) {
 		let memoTbl = Array.from(tbl[Object.keys(tbl)[0]]);
@@ -955,14 +952,14 @@ function exportToCSV() {
 		});
 	}
 
-	var csvContent = "Timestamp," + names.join(",") + "\n";
+	let csvContent = "Timestamp," + names.join(",") + "\n";
 	Object.keys(tbl).forEach(function(key) { csvContent +=  moment(key).format("YYYY/MM/DD HH:mm:ss.SSS,") + tbl[key].join(",") + "\n"; });
 	//myWindow = window.open("data:text/csv;charset=utf-8," + encodeURIComponent(csvContent));
 	viewFile("data:text/csv;charset=utf-8," + encodeURIComponent(csvContent));
 }
 
 function viewFile(csvContent) {
-	var link = document.createElement("a");
+	let link = document.createElement("a");
 	link.setAttribute("href", csvContent);
 	link.setAttribute("download", toLocal(new Date()) + ".csv");
 	document.body.appendChild(link); // Required for FF
@@ -970,16 +967,16 @@ function viewFile(csvContent) {
 }
 
 function toLocal(date) {
-  var local = new Date(date);
+  let local = new Date(date);
   local.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return local.toJSON();
 }
 
 function getLinkToCurrentView() {
-    var linkToCurrentView = window.location.href.split('?')[0] + '?';
-	var first = true;
-	for(var i in viewerVars.pvs) {
-		var pvName = viewerVars.pvs[i];
+    let linkToCurrentView = window.location.href.split('?')[0] + '?';
+	let first = true;
+	for(let i in viewerVars.pvs) {
+		let pvName = viewerVars.pvs[i];
 		if(first) { first = false; } else { linkToCurrentView += "&"; }
 		linkToCurrentView += "pv=" + pvName;
 	}
@@ -992,7 +989,7 @@ function getLinkToCurrentView() {
 
 // URL to what we are currently showing...
 function showLinkToCurrentView() {
-    var linkToCurrentView = getLinkToCurrentView();
+    let linkToCurrentView = getLinkToCurrentView();
 	console.log(linkToCurrentView);
 	$("#linkText").val(linkToCurrentView);
 	$('#linkModal').modal('show');
@@ -1008,7 +1005,7 @@ function allowDrop(ev) {
 
 function drop(ev) {
     ev.preventDefault();
-    var pvName = ev.dataTransfer.getData("text").trim();
+    let pvName = ev.dataTransfer.getData("text").trim();
     if(typeof pvName !== 'undefined' && pvName && pvName.length > 2) {
         console.log("Dropping in pv " + pvName);
     	addTraceForNewPVs([pvName]);
@@ -1018,17 +1015,17 @@ function drop(ev) {
 function showElogModal(gd) {
     if(gd._snapshotInProgress) { alert('Already posting to the elog'); return; }
     function makeblob(dataURL) { // from https://stackoverflow.com/questions/34047648/how-to-post-an-image-in-base64-encoding-via-ajax/34064793
-        var BASE64_MARKER = ';base64,';
+        let BASE64_MARKER = ';base64,';
         if (dataURL.indexOf(BASE64_MARKER) == -1) {
-            var parts = dataURL.split(','), contentType = parts[0].split(':')[1], raw = decodeURIComponent(parts[1]);
+            let parts = dataURL.split(','), contentType = parts[0].split(':')[1], raw = decodeURIComponent(parts[1]);
             return new Blob([raw], { type: contentType });
         }
-        var parts = dataURL.split(BASE64_MARKER), contentType = parts[0].split(':')[1], raw = window.atob(parts[1]), rawLength = raw.length, uInt8Array = new Uint8Array(rawLength);
-        for (var i = 0; i < rawLength; ++i) { uInt8Array[i] = raw.charCodeAt(i); }
+        let parts = dataURL.split(BASE64_MARKER), contentType = parts[0].split(':')[1], raw = window.atob(parts[1]), rawLength = raw.length, uInt8Array = new Uint8Array(rawLength);
+        for (let i = 0; i < rawLength; ++i) { uInt8Array[i] = raw.charCodeAt(i); }
         return new Blob([uInt8Array], { type: contentType });
     }
     gd._snapshotInProgress = true;
-    var promise = Plotly.toImage(gd, {'format': 'png'})
+    let promise = Plotly.toImage(gd, {'format': 'png'})
       .then(function(result) {
           gd._snapshotInProgress = false;
           viewerVars.currentSnapshot = makeblob(result);
@@ -1044,7 +1041,7 @@ function showElogModal(gd) {
 
 function postToELog() {
     if(viewerVars.currentSnapshot == null) { return; }
-    var data = new FormData();
+    let data = new FormData();
     data.append("snapshot", viewerVars.currentSnapshot);
     data.append("comment", $("#elogComment").val());
     data.append("link", getLinkToCurrentView());
@@ -1060,9 +1057,9 @@ function postToELog() {
 }
 
 function showYAxesRangeModal() {
-    var axtmpl = `{{#.}}<tr><td><label>{{egu}}</label></td><td><input type="text" class="form-control" name="{{egu}}_min" value="{{min}}"/></td><td><input type="text" class="form-control" name="{{egu}}_max" value="{{max}}"/></td></tr>{{/.}}`;
+    let axtmpl = `{{#.}}<tr><td><label>{{egu}}</label></td><td><input type="text" class="form-control" name="{{egu}}_min" value="{{min}}"/></td><td><input type="text" class="form-control" name="{{egu}}_max" value="{{max}}"/></td></tr>{{/.}}`;
     Mustache.parse(axtmpl);
-    var yranges = _.map(viewerVars.egu2axis, function(v, k) { return {
+    let yranges = _.map(viewerVars.egu2axis, function(v, k) { return {
         "egu": k,
         "min": _.get(viewerVars.egu_yaxis_specs, k + ".range", _.get(myDiv._fullLayout, viewerVars.y_short_2_long[v] + '.range[0]', -10)),
         "max": _.get(viewerVars.egu_yaxis_specs, k + ".range", _.get(myDiv._fullLayout, viewerVars.y_short_2_long[v] + '.range[1]',  10))
@@ -1072,9 +1069,9 @@ function showYAxesRangeModal() {
 }
 
 function applyYAxesRanges() {
-    var newlayout = myDiv.layout;
+    let newlayout = myDiv.layout;
     _.each(viewerVars.egu2axis, function(v, k) {
-        var range = [parseFloat($("#yAxesModal").find("table tbody").find("input[name="+k+"_min]").val()), parseFloat($("#yAxesModal").find("table tbody").find("input[name="+k+"_max]").val())];
+        let range = [parseFloat($("#yAxesModal").find("table tbody").find("input[name="+k+"_min]").val()), parseFloat($("#yAxesModal").find("table tbody").find("input[name="+k+"_max]").val())];
         _.set(viewerVars.egu_yaxis_specs, k + '.range', range);
         _.set(newlayout, viewerVars.y_short_2_long[v] + ".autorange", false);
         _.set(newlayout, viewerVars.y_short_2_long[v] + ".range", range);
@@ -1084,7 +1081,7 @@ function applyYAxesRanges() {
 
 function showRemovePVsModal() {
     if(viewerVars.pvs.length <= 0) { return; }
-    var rmtmpl = `{{#pvNames}}<div class="checkbox"><label><input type="checkbox" value="{{.}}">{{.}}</label></div>{{/pvNames}}`;
+    let rmtmpl = `{{#pvNames}}<div class="checkbox"><label><input type="checkbox" value="{{.}}">{{.}}</label></div>{{/pvNames}}`;
     Mustache.parse(rmtmpl);
     $("#removePVsModal").find(".checkboxlist").empty().append(Mustache.render(rmtmpl, { pvNames: viewerVars.pvs }));
     $('#removePVsModal').modal('show');
@@ -1092,7 +1089,7 @@ function showRemovePVsModal() {
 
 function removePVFromPlot(pvName) {
     console.log("Removing " + pvName);
-    var index = _.indexOf(viewerVars.pvs, pvName);
+    let index = _.indexOf(viewerVars.pvs, pvName);
     if (index >= 0) {
         viewerVars.pvs.splice(index, 1);
         delete viewerVars.pvData[pvName];
@@ -1108,10 +1105,10 @@ function removeSelectedPVs() {
 
 // Advanced view modal
 function showAdvancedViewModal() {
-	var buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
+	let buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
 	lastUnit = viewerVars.selectorOptions.buttons[buttonIndex].step;
 	lastInterval = viewerVars.selectorOptions.buttons[buttonIndex].count;
-	var modal = `
+	let modal = `
 		<div class="row align-items-center">
 			<div class="col-auto">
 				<label for="timeInput"><b>Enter your desired interval:</b></label>
@@ -1145,17 +1142,17 @@ function showAdvancedViewModal() {
 }
 
 function showAdvancedView() {
-	var step = document.getElementById('unitInput').value;
-	var count = parseInt(document.getElementById('timeInput').value);
+	let step = document.getElementById('unitInput').value;
+	let count = parseInt(document.getElementById('timeInput').value);
 	updateLiveButton(step, count);
 }
 
 // Update the properties (step, count) of Live button
 function updateLiveButton(newStep, newCount) {
-    var buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
+    let buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
 	viewerVars.selectorOptions.buttons[buttonIndex].step = newStep;
 	viewerVars.selectorOptions.buttons[buttonIndex].count = newCount;
-	var layoutChanges = {'xaxis' : { 'autorange' : false}};
+	let layoutChanges = {'xaxis' : { 'autorange' : false}};
 	layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
 	layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
 	layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
@@ -1164,9 +1161,9 @@ function updateLiveButton(newStep, newCount) {
 
 // Calculate the interval in millisecond
 function calculateLiveCount() {
-	var liveButtonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
-	var liveButtonCount = viewerVars.selectorOptions.buttons[liveButtonIndex].count;
-	var liveButtonStep = viewerVars.selectorOptions.buttons[liveButtonIndex].step;
+	let liveButtonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
+	let liveButtonCount = viewerVars.selectorOptions.buttons[liveButtonIndex].count;
+	let liveButtonStep = viewerVars.selectorOptions.buttons[liveButtonIndex].step;
 	switch (liveButtonStep) {
 		case "second":
 			liveButtonCount *= 1000;
