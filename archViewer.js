@@ -251,7 +251,6 @@ function determineBinSize() {
 function processChangesOnXAxis(eventdata) {
 	console.log( 'Received plotly_relayout event data:' + JSON.stringify(eventdata));
 	var previousStart = viewerVars.start;
-	var previousEnd = viewerVars.end;
 	if (('xaxis.range[0]' in eventdata && 'xaxis.range[1]' in eventdata)
 			|| ('xaxis2.range[0]' in eventdata && 'xaxis2.range[1]' in eventdata)
 			) {
@@ -397,18 +396,18 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 			// var XAxis_Change_Type = {"NewPlot":1, "ReplaceTraces":2, "LeftPan":3, "RightPan":4};
 			switch(xAxisChangeType) {
 			case "LeftPan":
-				var previousDataSetFirstSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].getTime();
+				let previousDataSetFirstSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].getTime();
 				console.log(data['data'].length + " samples from the server " + myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].toString());
 
-				var secs = data['data'].filter(function(sample){ return (sample['millis']) < previousDataSetFirstSampleMillis; }).map(function(sample) { return new Date(sample['millis']); });
-				var vals = data['data'].filter(function(sample){ return (sample['millis']) < previousDataSetFirstSampleMillis; }).map(function(sample) { return sample['val']; });
+				let secs = data['data'].filter(function(sample){ return (sample['millis']) < previousDataSetFirstSampleMillis; }).map(function(sample) { return new Date(sample['millis']); });
+				let vals = data['data'].filter(function(sample){ return (sample['millis']) < previousDataSetFirstSampleMillis; }).map(function(sample) { return sample['val']; });
 				viewerVars.pvData[pvName].update = { x: secs, y: vals };
 				console.log(secs.length + " after processing");
 				break;
 			case "RightPan":
-				var previousDataSetLastSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x.slice(-1)[0].getTime();
-				var secs = data['data'].filter(function(sample){ return (sample['millis']) > previousDataSetLastSampleMillis; }).map(function(sample) { return new Date(sample['millis']); });
-				var vals = data['data'].filter(function(sample){ return (sample['millis']) > previousDataSetLastSampleMillis; }).map(function(sample) { return sample['val']; });
+				let previousDataSetLastSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x.slice(-1)[0].getTime();
+				let secs = data['data'].filter(function(sample){ return (sample['millis']) > previousDataSetLastSampleMillis; }).map(function(sample) { return new Date(sample['millis']); });
+				let vals = data['data'].filter(function(sample){ return (sample['millis']) > previousDataSetLastSampleMillis; }).map(function(sample) { return sample['val']; });
 				viewerVars.pvData[pvName].update = { x: secs, y: vals };
 				break;
 			case "ReplaceTraces":
@@ -539,7 +538,7 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 
 // The modebar is specified in the plotConfig. Use icons from font-awesome to create our modebar buttons.
 function generatePlotConfig() {
-	let bPhone = (window.screen.availHeight > window.screen.availWidth) ? true : false;
+	let bPhone = (window.screen.availHeight > window.screen.availWidth);
 	let newModeBarButtons = [];
 
 	newModeBarButtons.push({ name: 'Start/End',
@@ -549,13 +548,13 @@ function generatePlotConfig() {
 			$("#dialog_endTime").val(moment(viewerVars.end).format("YYYY/MM/DD HH:mm:ss"));
 			$('#startEndTimeModal').modal('show');
 		}});
-	if (viewerVars.plotType == viewerVars.plotTypeEnum.SCATTER_2D && bPhone == false) {
+	if (viewerVars.plotType == viewerVars.plotTypeEnum.SCATTER_2D && !bPhone) {
 		newModeBarButtons.push({ name: 'Add PVs',
 			icon: viewerVars.icons['solid/search'],
 			click: function() { $('#searchAndAddPVsModal').modal('show'); }
 		});
 	}
-	if (bPhone == false) {
+	if (!bPhone) {
 		newModeBarButtons.push({ name: 'Show Data',
 			icon: viewerVars.icons['solid/save'],
 			click: showChartDataAsText
@@ -565,7 +564,7 @@ function generatePlotConfig() {
 		icon: viewerVars.icons['solid/download'],
 		click: exportToCSV
 	});
-	if (bPhone == false) {
+	if (!bPhone) {
 		newModeBarButtons.push({ name: 'Link to current',
 			icon: viewerVars.icons['solid/link'],
 			click: showLinkToCurrentView
@@ -577,19 +576,19 @@ function generatePlotConfig() {
     		click: showElogModal
     	});
     }
-	if (bPhone == false) {
+	if (!bPhone) {
 	    newModeBarButtons.push({ name: 'Y Axes ranges',
 			icon: viewerVars.icons['solid/text-height'],
 			click: showYAxesRangeModal
 		});
 	}
-	if (bPhone == false) {
+	if (!bPhone) {
 	    newModeBarButtons.push({ name: 'Remove PVs',
 			icon: viewerVars.icons['solid/trash-alt'],
 			click: showRemovePVsModal
 		});
 	}	
-	if (bPhone == false) {
+	if (!bPhone) {
 		newModeBarButtons.push({ name: 'Help',
 			icon: viewerVars.icons['regular/question-circle'],
 			click: showHelp
@@ -656,9 +655,9 @@ function process3DPlot(pvName, data) {
 
 	function frame() {
 		// Perform animation for each frame.
-		function range(len) { var ret = []; for(var i = 0; i < len; i++) { ret.push(i); } return ret; }
-		function spikeCurrentFrame() { var ret = []; for(var i = 0; i < totalFrames; i++) { ret.push((i == currentFrame) ? 4 : 1); } return ret; }
-        function getTimestampStrings() { var ret = []; for(var i = 0; i < viewerVars.pvData[pvName].secs.length; i++) { ret.push(moment(viewerVars.pvData[pvName].secs[i]).format("MMM/D/YYYY HH:mm:ss.SSS")); } return ret; }
+		function range(len) { let ret = []; for(let i = 0; i < len; i++) { ret.push(i); } return ret; }
+		function spikeCurrentFrame() { let ret = []; for(let i = 0; i < totalFrames; i++) { ret.push((i == currentFrame) ? 4 : 1); } return ret; }
+        function getTimestampStrings() { let ret = []; for(let i = 0; i < viewerVars.pvData[pvName].secs.length; i++) { ret.push(moment(viewerVars.pvData[pvName].secs[i]).format("MMM/D/YYYY HH:mm:ss.SSS")); } return ret; }
 
 		var valueTrace = {
 				x: range(viewerVars.pvData[pvName].vals[currentFrame].length),
@@ -1025,7 +1024,7 @@ function showElogModal(gd) {
         return new Blob([uInt8Array], { type: contentType });
     }
     gd._snapshotInProgress = true;
-    let promise = Plotly.toImage(gd, {'format': 'png'})
+    Plotly.toImage(gd, {'format': 'png'})
       .then(function(result) {
           gd._snapshotInProgress = false;
           viewerVars.currentSnapshot = makeblob(result);
