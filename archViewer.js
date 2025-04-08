@@ -46,8 +46,12 @@ viewerVars.timerIndexFor3DAnimation = -1;
 viewerVars.icons = {}
 // We take a snapshot of the gd before showing the comment modal. This is stored here
 viewerVars.currentSnapshot = null;
+viewerVars.currentButton = '';
 
-
+// last interval choice
+let lastInterval = null;
+// last time unit choice
+let lastUnit = null;
 
 // This is one of the integration points with the server.
 // This should default to a path relative location that works from the appliance UI.
@@ -65,28 +69,29 @@ $.get("../../../site_params.json")
 		viewerVars.siteSupportsPostToElog = _.get(site_params, "siteSupportsPostToElog", false);
 	})
 
-
-
 // Google finance like list of time windows..
 viewerVars.selectorOptions = {
-	buttons: [{step: 'second', stepmode: 'backward', count: 30, label: '30s'},
-		{step: 'minute', stepmode: 'backward', count: 1, label: '1m'},
-		{step: 'minute', stepmode: 'backward', count: 5, label: '5m'},
-		{step: 'minute', stepmode: 'backward', count: 15, label: '15m'},
-		{step: 'minute', stepmode: 'backward', count: 30, label: '30m'},
-		{step: 'hour', stepmode: 'backward', count: 1, label: '1h'},
-		{step: 'hour', stepmode: 'backward', count: 4, label: '4h'},
-		{step: 'hour', stepmode: 'backward', count: 8, label: '8h'},
-		{step: 'day', stepmode: 'backward', count: 1, label: '1d'},
-		{step: 'day', stepmode: 'backward', count: 2, label: '2d'},
-		{step: 'day', stepmode: 'backward', count: 7, label: '1w'},
-		{step: 'day', stepmode: 'backward', count: 14, label: '2w'},
-		{step: 'month', stepmode: 'backward', count: 1, label: '1M'},
-		{step: 'month', stepmode: 'backward', count: 6, label: '6M'},
-		{step: 'year', stepmode: 'backward', count: 1, label: '1Y'},
-		{step: 'year', stepmode: 'todate', count: 1, label: 'YTD'},
-		{step: 'minute', stepmode: 'forward', count: 7, label: 'Live'},
-	]
+	bgcolor: '#fdae61',
+	activecolor : '#f57a03',
+	buttons: [
+				{step: 'second',  stepmode: 'backward', count: 30, label: '30s'   },
+				{step: 'minute',  stepmode: 'backward', count: 1,  label: '1m'    },
+				{step: 'minute',  stepmode: 'backward', count: 5,  label: '5m'    },
+				{step: 'minute',  stepmode: 'backward', count: 15, label: '15m'   },
+				{step: 'minute',  stepmode: 'backward', count: 30, label: '30m'   },
+				{step: 'hour',    stepmode: 'backward', count: 1,  label: '1h'    },
+				{step: 'hour',    stepmode: 'backward', count: 4,  label: '4h'    },
+				{step: 'hour',    stepmode: 'backward', count: 8,  label: '8h'    },
+				{step: 'day',     stepmode: 'backward', count: 1,  label: '1d'    },
+				{step: 'day',     stepmode: 'backward', count: 2,  label: '2d'    },
+				{step: 'day',     stepmode: 'backward', count: 7,  label: '1w'    },
+				{step: 'day',     stepmode: 'backward', count: 14, label: '2w'    },
+				{step: 'month',   stepmode: 'backward', count: 1,  label: '1M'    },
+				{step: 'month',   stepmode: 'backward', count: 6,  label: '6M'    },
+				{step: 'year',    stepmode: 'backward', count: 1,  label: '1Y'    },
+				{step: 'year',    stepmode: 'todate',   count: 1,  label: 'YTD'   },
+				{step: 'minute',  stepmode: 'forward',  count: 7,  label: 'Live'  },
+			]
 };
 
 if (window.screen.availHeight > window.screen.availWidth) {
@@ -258,7 +263,6 @@ function determineBinSize() {
 function processChangesOnXAxis(eventdata) {
 	console.log( 'Received plotly_relayout event data:' + JSON.stringify(eventdata));
 	var previousStart = viewerVars.start;
-	var previousEnd = viewerVars.end;
 	if (('xaxis.range[0]' in eventdata && 'xaxis.range[1]' in eventdata)
 		|| ('xaxis2.range[0]' in eventdata && 'xaxis2.range[1]' in eventdata)
 	) {
@@ -269,8 +273,6 @@ function processChangesOnXAxis(eventdata) {
 			viewerVars.start = moment(eventdata['xaxis2.range[0]']).toDate();
 			viewerVars.end = moment(eventdata['xaxis2.range[1]']).toDate();
 		}
-		var previousDuration = previousEnd.getTime() - previousStart.getTime();
-		var duration = viewerVars.end.getTime() - viewerVars.start.getTime();
 
 		if(viewerVars.currentBinningOperator.startsWith('errorbar')) {
 			viewerVars.queryStart = viewerVars.start;
@@ -278,42 +280,38 @@ function processChangesOnXAxis(eventdata) {
 			fetchDataFromServerAndPlot("ReplaceTraces");
 			return;
 		}
-		if (Math.abs(duration - previousDuration) < 10*1000) {
-			console.log("Resolution stays the same; use extendTraces/prependTrace");
-			if(viewerVars.start < previousStart) {
-				// We panned left
-				viewerVars.queryStart = viewerVars.start;
-				viewerVars.queryEnd = previousStart;
-				fetchDataFromServerAndPlot("LeftPan");
-			} else {
-				// We panned right
-				viewerVars.queryStart = previousEnd;
-				viewerVars.queryEnd = viewerVars.end;
-				fetchDataFromServerAndPlot("RightPan");
-			}
+		console.log("Change in resolution; deleting and replacing traces");
+		determineBinSize();
+		viewerVars.queryStart = viewerVars.start;
+		viewerVars.queryEnd = viewerVars.end;
+		fetchDataFromServerAndPlot("ReplaceTraces");
+
+		calculateLiveCount();
+		if(viewerVars.currentButton == "Live") {
+			if(viewerVars.liveModeTimer != null) clearInterval(viewerVars.liveModeTimer);
+			console.log("Kicking off live mode..");
+			let layoutChanges = {'xaxis' : { 'autorange' : false}};
+			layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
+			layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
+			layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
+			layoutChanges.title = 'EPICS Archiver Appliance Viewer (live mode)';
+			Plotly.relayout(myDiv, layoutChanges);
+			viewerVars.liveModeTimer = setInterval(liveModeTick, 1*1000);
 		} else {
-			console.log("Change in resolution; deleting and replacing traces");
-			determineBinSize();
-			viewerVars.queryStart = viewerVars.start;
-			viewerVars.queryEnd = viewerVars.end;
-			fetchDataFromServerAndPlot("ReplaceTraces");
-			if(duration == 7*60*1000) {
-				console.log("Kicking off live mode..");
-				var layoutChanges = {'xaxis' : { 'autorange' : true}};
+			if(viewerVars.liveModeTimer != null) {
+				console.log("Entering static mode..");
+				clearInterval(viewerVars.liveModeTimer);
+				viewerVars.liveModeTimer = null;
+				let buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
+				viewerVars.selectorOptions.buttons[buttonIndex].step = 'minute';
+				viewerVars.selectorOptions.buttons[buttonIndex].count = 7;
+			
+				let layoutChanges = {'xaxis' : { 'autorange' : false}};
 				layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
+				layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
 				layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
+				layoutChanges.title = 'EPICS Archiver Appliance Viewer (static mode)';
 				Plotly.relayout(myDiv, layoutChanges);
-				viewerVars.liveModeTimer = setInterval(liveModeTick, 1*1000);
-			} else {
-				if(viewerVars.liveModeTimer != null) {
-					clearInterval(viewerVars.liveModeTimer);
-					viewerVars.liveModeTimer = null;
-					var layoutChanges = {'xaxis' : { 'autorange' : false}};
-					layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
-					layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
-					layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
-					Plotly.relayout(myDiv, layoutChanges);
-				}
 			}
 		}
 	} else if ('xaxis.range[0]' in eventdata) {
@@ -332,11 +330,10 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 		return;
 	}
 
-	var pvsToFetchData = (xAxisChangeType === "AddNewTrace") ? newTracePVNames : viewerVars.pvs;
-	var pvDataPromises = _.times(pvsToFetchData.length, function() { return new $.Deferred()}), datas = new Array(pvsToFetchData.length);
-	_.each(pvsToFetchData, function (unsafePVName, i) {
-		var queryString = "";
-		var pvName = encodeURIComponent(unsafePVName);
+	let pvsToFetchData = (xAxisChangeType == "AddNewTrace") ? newTracePVNames : viewerVars.pvs;
+	let pvDataPromises = _.times(pvsToFetchData.length, function() { return new $.Deferred()}), datas = new Array(pvsToFetchData.length);
+	_.each(pvsToFetchData, function(pvName, i) {
+		let queryString = "";
 		if(viewerVars.binSize > 0) {
 			if (viewerVars.currentBinningOperator === "raw") {
 				queryString = "pv="  + pvName;
@@ -346,10 +343,10 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 		} else {
 			queryString = "pv=" + pvName;
 		}
-		var startEndQs = "&from="+viewerVars.queryStart.toISOString()+"&to="+viewerVars.queryEnd.toISOString();
+		let startEndQs = "&from="+viewerVars.queryStart.toISOString()+"&to="+viewerVars.queryEnd.toISOString();
 
 		if(viewerVars.binSize > 0) {
-			var binnedQueryStart = new Date(Math.floor(viewerVars.queryStart.getTime()/(viewerVars.binSize*1000))*viewerVars.binSize*1000);
+			let binnedQueryStart = new Date(Math.floor(viewerVars.queryStart.getTime()/(viewerVars.binSize*1000))*viewerVars.binSize*1000);
 			console.log("Starting binned data retrieval from " + binnedQueryStart.toISOString());
 			startEndQs = "&from="+binnedQueryStart.toISOString()+"&to="+viewerVars.queryEnd.toISOString();
 		}
@@ -357,7 +354,7 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 			startEndQs += "&fetchLatestMetadata=true"
 		}
 
-		var pvDataUrl = viewerVars.serverURL + "/getData.qw?" + queryString + startEndQs;
+		let pvDataUrl = viewerVars.serverURL + "/getData.qw?" + queryString + startEndQs;
 		console.log(pvDataUrl);
 		$.getJSON(pvDataUrl).done(function (d0) {
 			datas[i] = d0;
@@ -383,9 +380,9 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 			let data = datas[i][0];
 			if(_.isNil(data) || !_.includes(_.keys(data), "meta")) { console.log("Empty dataset for PV at" + i); console.log(data); continue}
 			// arguments[i] is the result of the .getJSON; the data is in [0]. The server sends this as an array hence the additional [0]
-			var pvName = data['meta'].name;
+			let pvName = data['meta'].name;
 			console.log("Plotting " + pvName);
-			var egu = data['meta']['EGU'];
+			let egu = data['meta']['EGU'];
 			if(typeof egu == 'undefined' || !egu || egu.length <= 0) { egu = 'N/A'; }
 			if(!('egu' in viewerVars.pvData[pvName])) {
 				viewerVars.pvData[pvName].egu = egu;
@@ -429,92 +426,63 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 
 			// var XAxis_Change_Type = {"NewPlot":1, "ReplaceTraces":2, "LeftPan":3, "RightPan":4};
 			switch(xAxisChangeType) {
-				case "LeftPan":
-					var previousDataSetFirstSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].getTime();
-					console.log(data['data'].length + " samples from the server " + myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].toString());
+			case "LeftPan": {
+				let previousDataSetFirstSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].getTime();
+				console.log(data['data'].length + " samples from the server " + myDiv.data[viewerVars.pvData[pvName].traceIndex].x[0].toString());
 
-					var secs = data['data'].filter(function (sample) {
-						return (sample['millis']) < previousDataSetFirstSampleMillis;
-					}).map(function (sample) {
-						return new Date(sample['millis']);
-					});
-					var vals = data['data'].filter(function (sample) {
-						return (sample['millis']) < previousDataSetFirstSampleMillis;
-					}).map(function (sample) {
-						return sample['val'];
-					});
-					viewerVars.pvData[pvName].update = {x: secs, y: vals};
-					console.log(secs.length + " after processing");
-					break;
-				case "RightPan":
-					var previousDataSetLastSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x.slice(-1)[0].getTime();
-					var secs = data['data'].filter(function (sample) {
-						return (sample['millis']) > previousDataSetLastSampleMillis;
-					}).map(function (sample) {
-						return new Date(sample['millis']);
-					});
-					var vals = data['data'].filter(function (sample) {
-						return (sample['millis']) > previousDataSetLastSampleMillis;
-					}).map(function (sample) {
-						return sample['val'];
-					});
-					viewerVars.pvData[pvName].update = {x: secs, y: vals};
-					break;
-				case "ReplaceTraces":
-				case "NewPlot":
-				case "AddNewTrace":
-				default:
-					viewerVars.pvData[pvName].secs = data['data'].map(function (sample) {
-						return new Date(sample['millis']);
-					});
-					viewerVars.pvData[pvName].vals = data['data'].map(function (sample) {
-						return sample['val'];
-					});
-					console.log("Add a fake point at " + moment(viewerVars.queryEnd).toDate());
-					viewerVars.pvData[pvName].secs.push(moment(viewerVars.queryEnd).toDate());
-					viewerVars.pvData[pvName].vals.push(viewerVars.pvData[pvName].vals.slice(-1)[0]);
-					viewerVars.pvData[pvName].trace = {
-						x: viewerVars.pvData[pvName].secs,
-						y: viewerVars.pvData[pvName].vals,
-						name: pvName,
-						hoverlabel: {namelength: -1},
-						type: 'scatter',
-						mode: "lines",
-						line: {shape: 'hv'},
-						yaxis: viewerVars.pvData[pvName].axis
-					};
-					if (viewerVars.binSize > 0 && viewerVars.currentBinningOperator.startsWith('errorbar')) {
-						viewerVars.pvData[pvName].stdzVals = data['data'].map(function (sample) {
-							return sample['fields']['stdz'];
-						});
-						viewerVars.pvData[pvName].trace.error_y = {
-							type: 'data',
-							array: viewerVars.pvData[pvName].stdzVals,
-							visible: true
-						};
-					}
+				let secs = data['data'].filter(function(sample){ return (sample['millis']) < previousDataSetFirstSampleMillis; }).map(function(sample) { return new Date(sample['millis']); });
+				let vals = data['data'].filter(function(sample){ return (sample['millis']) < previousDataSetFirstSampleMillis; }).map(function(sample) { return sample['val']; });
+				viewerVars.pvData[pvName].update = { x: secs, y: vals };
+				console.log(secs.length + " after processing");
+				break;
+			}
+			case "RightPan": {
+				let previousDataSetLastSampleMillis = myDiv.data[viewerVars.pvData[pvName].traceIndex].x.slice(-1)[0].getTime();
+				let secs = data['data'].filter(function(sample){ return (sample['millis']) > previousDataSetLastSampleMillis; }).map(function(sample) { return new Date(sample['millis']); });
+				let vals = data['data'].filter(function(sample){ return (sample['millis']) > previousDataSetLastSampleMillis; }).map(function(sample) { return sample['val']; });
+				viewerVars.pvData[pvName].update = { x: secs, y: vals };
+				break;
+			}
+			case "ReplaceTraces":
+			case "NewPlot":
+			case "AddNewTrace":
+			default:
+				viewerVars.pvData[pvName].secs = data['data'].map(function(sample) { return new Date(sample['millis']); });
+			    viewerVars.pvData[pvName].vals = data['data'].map(function(sample) { return sample['val']; });
+                console.log("Add a fake point at " + moment(viewerVars.queryEnd).toDate());
+                viewerVars.pvData[pvName].secs.push(moment(viewerVars.queryEnd).toDate()); viewerVars.pvData[pvName].vals.push(viewerVars.pvData[pvName].vals.slice(-1)[0]);
+			    viewerVars.pvData[pvName].trace = {
+					x: viewerVars.pvData[pvName].secs,
+					y: viewerVars.pvData[pvName].vals,
+					name: pvName,
+					hoverlabel: {namelength :-1},
+					type: 'scatter',
+					mode: "lines",
+					line: {shape: 'hv'},
+					yaxis: viewerVars.pvData[pvName].axis
+			    };
+			    if (viewerVars.binSize > 0 && viewerVars.currentBinningOperator.startsWith('errorbar')) {
+			    	viewerVars.pvData[pvName].stdzVals = data['data'].map(function(sample) { return sample['fields']['stdz']; });
+			    	viewerVars.pvData[pvName].trace.error_y = {type: 'data', array: viewerVars.pvData[pvName].stdzVals, visible: true};
+			    }
 
-					break;
+			    break;
 			} // Close the switch
 		}
 
 		if(!('layout' in myDiv)) { // This means we are creating the plotly object for the first time...
 			var layout = {
-				title: 'EPICS Archiver Appliance Viewer',
-				width: window.innerWidth,
-				height: window.innerHeight * 0.95,
-				showlegend: true,
-				legend: {x: 0, y: 1},
-				xaxis: {
-					type: 'date', rangeselector: viewerVars.selectorOptions,
-					autorange: false, range: [viewerVars.start.getTime(), viewerVars.end.getTime()],
-					title: getXAxisTitle(),
-					titlefont: {color: '#7f7f7f',}
-				},
-				yaxis: _.assign({
-					title: viewerVars.axis2egu['y1'],
-					exponentformat: 'e'
-				}, getYAxisSpecification(viewerVars.pvs[0]))
+					title: 'EPICS Archiver Appliance Viewer (static mode)',
+                    width: window.innerWidth,
+					height: window.innerHeight*0.95,
+					showlegend: true,
+					legend: {x: 0, y: 1},
+					xaxis: {type: 'date', rangeselector: viewerVars.selectorOptions,
+						autorange: false, range: [viewerVars.start.getTime(), viewerVars.end.getTime()],
+						title: getXAxisTitle(),
+						titlefont: {color: '#7f7f7f', }
+					},
+					yaxis: _.assign({title: viewerVars.axis2egu['y1'], exponentformat: 'e'}, getYAxisSpecification(viewerVars.pvs[0]))
 			};
 			var layoutChanges = getLayoutChangesForMultipleYAxes(layout);
 			$.extend(true, layout, layoutChanges);
@@ -526,6 +494,20 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 				myDiv.on('plotly_relayout', processChangesOnXAxis);
 				addToolTipsToTraceLegends();
 			});
+
+			// click on Live button 
+			$('.rangeselector').on('click', 'g', function(event) {
+                if (viewerVars.currentButton == "Live") {
+					showAdvancedViewModal();
+				}
+            });
+			
+			// memorize current button
+			$('.rangeselector > g').on( "mouseenter", function(event) {
+				viewerVars.currentButton = event.currentTarget.lastChild.innerHTML;
+            });
+
+
 		} else { // We have already created the plotly object; use add/delete API's
 			var updateXs = [], updateYs = [], updateIndices = [], newTraces = [], newTraceIndices = [];
 			for(i = 0; i < viewerVars.pvs.length; i++) {
@@ -592,8 +574,8 @@ function fetchDataFromServerAndPlot(xAxisChangeType, newTracePVNames) {
 
 // The modebar is specified in the plotConfig. Use icons from font-awesome to create our modebar buttons.
 function generatePlotConfig() {
-	var bPhone = (window.screen.availHeight > window.screen.availWidth);
-	var newModeBarButtons = [];
+	let bPhone = (window.screen.availHeight > window.screen.availWidth);
+	let newModeBarButtons = [];
 	newModeBarButtons.push({ name: 'Start/End',
 		icon: viewerVars.icons['regular/calendar-alt'],
 		click: function() {
@@ -601,13 +583,13 @@ function generatePlotConfig() {
 			$("#dialog_endTime").val(moment(viewerVars.end).format("YYYY/MM/DD HH:mm:ss"));
 			$('#startEndTimeModal').modal('show');
 		}});
-	if (viewerVars.plotType === viewerVars.plotTypeEnum.SCATTER_2D && bPhone == false) {
+	if (viewerVars.plotType == viewerVars.plotTypeEnum.SCATTER_2D && !bPhone) {
 		newModeBarButtons.push({ name: 'Add PVs',
 			icon: viewerVars.icons['solid/search'],
 			click: function() { $('#searchAndAddPVsModal').modal('show'); }
 		});
 	}
-	if (bPhone === false) {
+	if (!bPhone) {
 		newModeBarButtons.push({ name: 'Show Data',
 			icon: viewerVars.icons['solid/save'],
 			click: showChartDataAsText
@@ -617,34 +599,31 @@ function generatePlotConfig() {
 		icon: viewerVars.icons['solid/download'],
 		click: exportToCSV
 	});
-	if (bPhone === false) {
+	if (!bPhone) {
 		newModeBarButtons.push({ name: 'Link to current',
 			icon: viewerVars.icons['solid/link'],
 			click: showLinkToCurrentView
 		});
 	}
-	if (viewerVars.siteSupportsPostToElog) {
-		newModeBarButtons.push({
-			name: 'Post to elog',
-			icon: viewerVars.icons['solid/share'],
-			click: showElogModal
-		});
-	}
-	if (bPhone == false) {
-		newModeBarButtons.push({
-			name: 'Y Axes ranges',
+    if(viewerVars.siteSupportsPostToElog) {
+        newModeBarButtons.push({ name: 'Post to elog',
+    		icon: viewerVars.icons['solid/share'],
+    		click: showElogModal
+    	});
+    }
+	if (!bPhone) {
+	    newModeBarButtons.push({ name: 'Y Axes ranges',
 			icon: viewerVars.icons['solid/text-height'],
 			click: showYAxesRangeModal
 		});
 	}
-	if (bPhone == false) {
-		newModeBarButtons.push({
-			name: 'Remove PVs',
+	if (!bPhone) {
+	    newModeBarButtons.push({ name: 'Remove PVs',
 			icon: viewerVars.icons['solid/trash-alt'],
 			click: showRemovePVsModal
 		});
-	}
-	if (bPhone == false) {
+	}	
+	if (!bPhone) {
 		newModeBarButtons.push({ name: 'Help',
 			icon: viewerVars.icons['regular/question-circle'],
 			click: showHelp
@@ -653,17 +632,17 @@ function generatePlotConfig() {
 
 
 	// Add mode bar buttons for start+end time etc
-	var plotConfig = {
-		displaylogo: false,
-		modeBarButtonsToAdd: newModeBarButtons,
-		modeBarButtonsToRemove: bPhone ? ['sendDataToCloud', 'toggleSpikelines', 'toImage', 'toggleHover', 'hoverClosestCartesian', 'hoverCompareCartesian'] : ['sendDataToCloud']
+	let plotConfig = {
+			displaylogo: false,
+			modeBarButtonsToAdd: newModeBarButtons,
+			modeBarButtonsToRemove: bPhone ? ['sendDataToCloud', 'toggleSpikelines', 'toImage', 'toggleHover', 'hoverClosestCartesian', 'hoverCompareCartesian'] : ['sendDataToCloud']
 	};
 	return plotConfig;
 }
 
 // The search modebar buttons will eventually call this function to add a new PV to the plot.
 function addTraceForNewPVs(pvNames) {
-	var addingForTheFirstTime = (viewerVars.pvs.length == 0);
+	let addingForTheFirstTime = (viewerVars.pvs.length == 0);
 	viewerVars.pvs = viewerVars.pvs.concat(pvNames);
 	pvNames.forEach(function(nm,i) { viewerVars.pvData[nm] = {}; });
 	console.log("Adding " + pvNames + " to traces");
@@ -711,16 +690,9 @@ function process3DPlot(pvName, data) {
 
 	function frame() {
 		// Perform animation for each frame.
-		function range(len) { var ret = []; for(var i = 0; i < len; i++) { ret.push(i); } return ret; }
-		function spikeCurrentFrame() { var ret = []; for(var i = 0; i < totalFrames; i++) { ret.push((i == currentFrame) ? 4 : 1); } return ret; }
-
-		function getTimestampStrings() {
-			var ret = [];
-			for (var i = 0; i < viewerVars.pvData[pvName].secs.length; i++) {
-				ret.push(moment(viewerVars.pvData[pvName].secs[i]).format("MMM/D/YYYY HH:mm:ss.SSS"));
-			}
-			return ret;
-		}
+		function range(len) { let ret = []; for(let i = 0; i < len; i++) { ret.push(i); } return ret; }
+		function spikeCurrentFrame() { let ret = []; for(let i = 0; i < totalFrames; i++) { ret.push((i == currentFrame) ? 4 : 1); } return ret; }
+        function getTimestampStrings() { let ret = []; for(let i = 0; i < viewerVars.pvData[pvName].secs.length; i++) { ret.push(moment(viewerVars.pvData[pvName].secs[i]).format("MMM/D/YYYY HH:mm:ss.SSS")); } return ret; }
 
 		var valueTrace = {
 			x: range(viewerVars.pvData[pvName].vals[currentFrame].length),
@@ -792,7 +764,9 @@ function getXAxisTitle() {
 
 // Update the X-Axis title based on changes to bin size and post-processor.
 function updateXAxisTitle() {
-	myDiv.layout.xaxis.title = getXAxisTitle();
+	if (myDiv.layout.xaxis.title != getXAxisTitle()) {
+		myDiv.layout.xaxis.title = getXAxisTitle();
+	}	
 }
 
 // If the PV has a .DESC, we add that as a tooltip to the PV's legend.
@@ -820,12 +794,22 @@ function reflectBinSizeColorOnLegend() {
 // Functions for the page start here.
 
 function liveModeTick() { // Timer function for the live mode tick...
-	var now = new Date();
+	let liveButtonCount = calculateLiveCount();
+	let now = new Date();
 	viewerVars.end = now;
-	viewerVars.start = new Date(now.getTime() - 7*60*1000);
+	viewerVars.start = new Date(now.getTime() - liveButtonCount);
 	viewerVars.queryStart = viewerVars.start;
 	viewerVars.queryEnd = viewerVars.end;
-	fetchDataFromServerAndPlot("RightPan");
+
+	let layoutChanges = {'xaxis' : { 'autorange' : false}};
+	layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
+	layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
+	layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
+	layoutChanges.xaxis.title = getXAxisTitle();
+	layoutChanges.title = 'EPICS Archiver Appliance Viewer (live mode)';
+	Plotly.relayout(myDiv, layoutChanges);
+
+	fetchDataFromServerAndPlot("ReplaceTraces");
 }
 
 
@@ -837,14 +821,14 @@ function startAndEndTimeSelected() {
 	viewerVars.queryEnd = viewerVars.end;
 
 	if(viewerVars.plotType == viewerVars.plotTypeEnum.SCATTER_2D) {
-		var currXAxis = myDiv.layout.xaxis;
+		let currXAxis = myDiv.layout.xaxis;
 		layoutChanges = {'xaxis': { 'autorange' : false }};
 		layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
 		layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
 		layoutChanges.xaxis.domain = currXAxis.domain;
 		Plotly.relayout(myDiv, layoutChanges);
 	} else {
-		var currXAxis = myDiv.layout.xaxis2;
+		let currXAxis = myDiv.layout.xaxis2;
 		layoutChanges = {'xaxis2': { 'autorange' : false }};
 		layoutChanges.xaxis2.rangeselector = viewerVars.selectorOptions;
 		layoutChanges.xaxis2.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
@@ -859,9 +843,9 @@ function startAndEndTimeSelected() {
 
 // User typed a pattern, we search for PV's matching this pattern.
 function searchForPVsMatchingPattern() {
-	var pattern = $("#pvNamePattern").val();
+	let pattern = $("#pvNamePattern").val();
 	console.log("Search and add PVs for pattern " + pattern);
-	var list = $("#pvNameSearchMatchingList");
+	let list = $("#pvNameSearchMatchingList");
 	list.empty();
 	$("#pvNameSearchMatchingError").empty();
 	$.getJSON( viewerVars.serverURL + "/../bpl/getMatchingPVs?limit=10000&pv=" + pattern, function(matchingPVs){
@@ -879,7 +863,7 @@ function searchForPVsMatchingPattern() {
 }
 
 function addSelectedSearchPVs(e) {
-	var selectedPVs = [];
+	let selectedPVs = [];
 	$("#pvNameSearchMatchingList li.list-group-item-info").each(function(index) { selectedPVs.push($(this).text())});
 	if(selectedPVs.length > 0) {
 		$('#searchAndAddPVsModal').modal('hide');
@@ -890,7 +874,7 @@ function addSelectedSearchPVs(e) {
 }
 
 function fixBinSize() {
-	var binSize = parseInt($("#binSizeInput").val());
+	let binSize = parseInt($("#binSizeInput").val());
 	if(binSize > 0) {
 		viewerVars.userFixedBinSize = true;
 		viewerVars.binSize = binSize;
@@ -902,11 +886,11 @@ function fixBinSize() {
 
 // When you click on a y-axis, toggle between a log/linear scale.
 function toggleLinearLogScale(egu) {
-	var shortAxis = viewerVars.egu2axis[egu];
-	var longAxis = viewerVars.y_short_2_long[shortAxis];
-	var currentType = myDiv.layout[longAxis]['type'];
-	var newType = (currentType == "linear") ? "log" : "linear";
-	var newTitle = (newType == "linear") ? egu : ("log(" + egu + ")");
+	let shortAxis = viewerVars.egu2axis[egu];
+	let longAxis = viewerVars.y_short_2_long[shortAxis];
+	let currentType = myDiv.layout[longAxis]['type'];
+	let newType = (currentType == "linear") ? "log" : "linear";
+	let newTitle = (newType == "linear") ? egu : ("log(" + egu + ")");
 	console.log("Changing scale for " + egu + " to " + newType);
 	myDiv.layout[longAxis]['type'] = newType;
 	myDiv.layout[longAxis]['title'] = newTitle;
@@ -958,10 +942,10 @@ function getCurrentDataAsDict() {
 
 // Popup a modal with the data for the current plot.
 function showChartDataAsText() {
-	var d = getCurrentDataAsDict();
-	var names = d[0];
-	var tbl = d[1];
-	var htmlContent = "<table id='showDataTable' class='table table-striped table-bordered table-condensed'><tr><th>Time</th><th>" + names.join("</th><th>") + "</th></tr>\n";
+	let d = getCurrentDataAsDict();
+	let names = d[0];
+	let tbl = d[1];
+	let htmlContent = "<table id='showDataTable' class='table table-striped table-bordered table-condensed'><tr><th>Time</th><th>" + names.join("</th><th>") + "</th></tr>\n";
 	Object.keys(tbl).sort().forEach(function(key) { htmlContent += "<tr><td>" + moment(key).format("YYYY/MM/DD HH:mm:ss.SSS") + "</td><td>" + tbl[key].join("</td><td>") + "</td></tr>\n"; });
 	$("#showDataTableDiv").empty();
 	$("#showDataTableDiv").append(htmlContent);
@@ -969,10 +953,9 @@ function showChartDataAsText() {
 }
 
 function exportToCSV() {
-	var d = getCurrentDataAsDict();
-	var names = d[0];
-	var tbl = Object.fromEntries(Object.entries(d[1]).sort());
-
+	let d = getCurrentDataAsDict();
+	let names = d[0];
+	let tbl = Object.fromEntries(Object.entries(d[1]).sort());
 	if (viewerVars.replaceNA) {
 		let memoTbl = Array.from(tbl[Object.keys(tbl)[0]]);
 		let firstTbl = Array.from(tbl[Object.keys(tbl)[0]]);
@@ -1008,14 +991,14 @@ function exportToCSV() {
 		});
 	}
 
-	var csvContent = "Timestamp," + names.join(",") + "\n";
+	let csvContent = "Timestamp," + names.join(",") + "\n";
 	Object.keys(tbl).forEach(function(key) { csvContent +=  moment(key).format("YYYY/MM/DD HH:mm:ss.SSS,") + tbl[key].join(",") + "\n"; });
 	//myWindow = window.open("data:text/csv;charset=utf-8," + encodeURIComponent(csvContent));
 	viewFile("data:text/csv;charset=utf-8," + encodeURIComponent(csvContent));
 }
 
 function viewFile(csvContent) {
-	var link = document.createElement("a");
+	let link = document.createElement("a");
 	link.setAttribute("href", csvContent);
 	link.setAttribute("download", toLocal(new Date()) + ".csv");
 	document.body.appendChild(link); // Required for FF
@@ -1023,16 +1006,16 @@ function viewFile(csvContent) {
 }
 
 function toLocal(date) {
-	var local = new Date(date);
-	local.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-	return local.toJSON();
+  let local = new Date(date);
+  local.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return local.toJSON();
 }
 
 function getLinkToCurrentView() {
-	var linkToCurrentView = window.location.href.split('?')[0] + '?';
-	var first = true;
-	for(var i in viewerVars.pvs) {
-		var pvName = viewerVars.pvs[i];
+    let linkToCurrentView = window.location.href.split('?')[0] + '?';
+	let first = true;
+	for(let i in viewerVars.pvs) {
+		let pvName = viewerVars.pvs[i];
 		if(first) { first = false; } else { linkToCurrentView += "&"; }
 		linkToCurrentView += "pv=" + pvName;
 	}
@@ -1049,7 +1032,7 @@ function getLinkToCurrentView() {
 
 // URL to what we are currently showing...
 function showLinkToCurrentView() {
-	var linkToCurrentView = getLinkToCurrentView();
+    let linkToCurrentView = getLinkToCurrentView();
 	console.log(linkToCurrentView);
 	$("#linkText").val(linkToCurrentView);
 	$('#linkModal').modal('show');
@@ -1064,125 +1047,182 @@ function allowDrop(ev) {
 }
 
 function drop(ev) {
-	ev.preventDefault();
-	var pvName = ev.dataTransfer.getData("text").trim();
-	if (typeof pvName !== 'undefined' && pvName && pvName.length > 2) {
-		console.log("Dropping in pv " + pvName);
-		addTraceForNewPVs([pvName]);
-	}
+    ev.preventDefault();
+    let pvName = ev.dataTransfer.getData("text").trim();
+    if(typeof pvName !== 'undefined' && pvName && pvName.length > 2) {
+        console.log("Dropping in pv " + pvName);
+    	addTraceForNewPVs([pvName]);
+    }
 }
 
 function showElogModal(gd) {
-	if (gd._snapshotInProgress) {
-		alert('Already posting to the elog');
-		return;
-	}
-
-	function makeblob(dataURL) { // from https://stackoverflow.com/questions/34047648/how-to-post-an-image-in-base64-encoding-via-ajax/34064793
-		var BASE64_MARKER = ';base64,';
-		if (dataURL.indexOf(BASE64_MARKER) == -1) {
-			var parts = dataURL.split(','), contentType = parts[0].split(':')[1], raw = decodeURIComponent(parts[1]);
-			return new Blob([raw], {type: contentType});
-		}
-		var parts = dataURL.split(BASE64_MARKER), contentType = parts[0].split(':')[1], raw = window.atob(parts[1]),
-			rawLength = raw.length, uInt8Array = new Uint8Array(rawLength);
-		for (var i = 0; i < rawLength; ++i) {
-			uInt8Array[i] = raw.charCodeAt(i);
-		}
-		return new Blob([uInt8Array], {type: contentType});
-	}
-
-	gd._snapshotInProgress = true;
-	var promise = Plotly.toImage(gd, {'format': 'png'})
-		.then(function (result) {
-			gd._snapshotInProgress = false;
-			viewerVars.currentSnapshot = makeblob(result);
-			console.log("Done generating snapshot and storing in viewervars");
-			$("#elogComment").val("");
-			$('#elogModal').modal('show');
-		})
-		.catch(function () {
-			gd._snapshotInProgress = false;
-			viewerVars.currentSnapshot = null;
-			alert("There was a problem creating a snapshot");
-		});
-}
+    if(gd._snapshotInProgress) { alert('Already posting to the elog'); return; }
+    function makeblob(dataURL) { // from https://stackoverflow.com/questions/34047648/how-to-post-an-image-in-base64-encoding-via-ajax/34064793
+        let BASE64_MARKER = ';base64,';
+        if (dataURL.indexOf(BASE64_MARKER) == -1) {
+            let parts = dataURL.split(','), contentType = parts[0].split(':')[1], raw = decodeURIComponent(parts[1]);
+            return new Blob([raw], { type: contentType });
+        }
+        let parts = dataURL.split(BASE64_MARKER), contentType = parts[0].split(':')[1], raw = window.atob(parts[1]), rawLength = raw.length, uInt8Array = new Uint8Array(rawLength);
+        for (let i = 0; i < rawLength; ++i) { uInt8Array[i] = raw.charCodeAt(i); }
+        return new Blob([uInt8Array], { type: contentType });
+    }
+    gd._snapshotInProgress = true;
+    Plotly.toImage(gd, {'format': 'png'})
+      .then(function(result) {
+          gd._snapshotInProgress = false;
+          viewerVars.currentSnapshot = makeblob(result);
+          console.log("Done generating snapshot and storing in viewervars");
+          $("#elogComment").val("");
+          $('#elogModal').modal('show');
+      })
+      .catch(function() {
+          gd._snapshotInProgress = false;
+          viewerVars.currentSnapshot = null;
+          alert("There was a problem creating a snapshot");
+      });}
 
 function postToELog() {
-	if (viewerVars.currentSnapshot == null) {
-		return;
-	}
-	var data = new FormData();
-	data.append("snapshot", viewerVars.currentSnapshot);
-	data.append("comment", $("#elogComment").val());
-	data.append("link", getLinkToCurrentView());
-	$.ajax({
-		url: viewerVars.postToElogURL,
-		cache: false, contentType: false, processData: false,
-		method: 'POST',
-		data: data
-	})
-		.done(function (data) {
-			console.log("Successfully posted to the elog");
-		})
-		.fail(function (jqXHR, textStatus, errorThrown) {
-			alert("Error posting to the elog " + jqXHR.statusText);
-			console.log(jqXHR);
-		})
-		.always(function () {
-			viewerVars.currentSnapshot = null;
-		})
+    if(viewerVars.currentSnapshot == null) { return; }
+    let data = new FormData();
+    data.append("snapshot", viewerVars.currentSnapshot);
+    data.append("comment", $("#elogComment").val());
+    data.append("link", getLinkToCurrentView());
+    $.ajax({
+        url: viewerVars.postToElogURL,
+        cache: false, contentType: false, processData: false,
+        method: 'POST',
+        data: data
+       })
+   .done(function(data) { console.log("Successfully posted to the elog"); })
+   .fail(function(jqXHR, textStatus, errorThrown) { alert("Error posting to the elog " + jqXHR.statusText); console.log(jqXHR);})
+   .always(function(){ viewerVars.currentSnapshot = null; })
 }
 
 function showYAxesRangeModal() {
-	var axtmpl = `{{#.}}<tr><td><label>{{egu}}</label></td><td><input type="text" class="form-control" name="{{egu}}_min" value="{{min}}"/></td><td><input type="text" class="form-control" name="{{egu}}_max" value="{{max}}"/></td></tr>{{/.}}`;
-	Mustache.parse(axtmpl);
-	var yranges = _.map(viewerVars.egu2axis, function (v, k) {
-		return {
-			"egu": k,
-			"min": _.get(viewerVars.egu_yaxis_specs, k + ".range", _.get(myDiv._fullLayout, viewerVars.y_short_2_long[v] + '.range[0]', -10)),
-			"max": _.get(viewerVars.egu_yaxis_specs, k + ".range", _.get(myDiv._fullLayout, viewerVars.y_short_2_long[v] + '.range[1]', 10))
-		}
-	})
-	$("#yAxesModal").find("table tbody").empty().append(Mustache.render(axtmpl, yranges));
-	$('#yAxesModal').modal('show');
+    let axtmpl = `{{#.}}<tr><td><label>{{egu}}</label></td><td><input type="text" class="form-control" name="{{egu}}_min" value="{{min}}"/></td><td><input type="text" class="form-control" name="{{egu}}_max" value="{{max}}"/></td></tr>{{/.}}`;
+    Mustache.parse(axtmpl);
+    let yranges = _.map(viewerVars.egu2axis, function(v, k) { return {
+        "egu": k,
+        "min": _.get(viewerVars.egu_yaxis_specs, k + ".range", _.get(myDiv._fullLayout, viewerVars.y_short_2_long[v] + '.range[0]', -10)),
+        "max": _.get(viewerVars.egu_yaxis_specs, k + ".range", _.get(myDiv._fullLayout, viewerVars.y_short_2_long[v] + '.range[1]',  10))
+    }})
+    $("#yAxesModal").find("table tbody").empty().append(Mustache.render(axtmpl, yranges));
+    $('#yAxesModal').modal('show');
 }
 
 function applyYAxesRanges() {
-	var newlayout = myDiv.layout;
-	_.each(viewerVars.egu2axis, function (v, k) {
-		var range = [parseFloat($("#yAxesModal").find("table tbody").find("input[name=" + k + "_min]").val()), parseFloat($("#yAxesModal").find("table tbody").find("input[name=" + k + "_max]").val())];
-		_.set(viewerVars.egu_yaxis_specs, k + '.range', range);
-		_.set(newlayout, viewerVars.y_short_2_long[v] + ".autorange", false);
-		_.set(newlayout, viewerVars.y_short_2_long[v] + ".range", range);
-	});
-	fetchDataFromServerAndPlot("ReplaceTraces");
+    let newlayout = myDiv.layout;
+    _.each(viewerVars.egu2axis, function(v, k) {
+        let range = [parseFloat($("#yAxesModal").find("table tbody").find("input[name="+k+"_min]").val()), parseFloat($("#yAxesModal").find("table tbody").find("input[name="+k+"_max]").val())];
+        _.set(viewerVars.egu_yaxis_specs, k + '.range', range);
+        _.set(newlayout, viewerVars.y_short_2_long[v] + ".autorange", false);
+        _.set(newlayout, viewerVars.y_short_2_long[v] + ".range", range);
+    });
+    fetchDataFromServerAndPlot("ReplaceTraces");
 }
 
 function showRemovePVsModal() {
-	if (viewerVars.pvs.length <= 0) {
-		return;
-	}
-	var rmtmpl = `{{#pvNames}}<div class="checkbox"><label><input type="checkbox" value="{{.}}">{{.}}</label></div>{{/pvNames}}`;
-	Mustache.parse(rmtmpl);
-	$("#removePVsModal").find(".checkboxlist").empty().append(Mustache.render(rmtmpl, {pvNames: viewerVars.pvs}));
-	$('#removePVsModal').modal('show');
+    if(viewerVars.pvs.length <= 0) { return; }
+    let rmtmpl = `{{#pvNames}}<div class="checkbox"><label><input type="checkbox" value="{{.}}">{{.}}</label></div>{{/pvNames}}`;
+    Mustache.parse(rmtmpl);
+    $("#removePVsModal").find(".checkboxlist").empty().append(Mustache.render(rmtmpl, { pvNames: viewerVars.pvs }));
+    $('#removePVsModal').modal('show');
 }
 
 function removePVFromPlot(pvName) {
-	console.log("Removing " + pvName);
-	var index = _.indexOf(viewerVars.pvs, pvName);
-	if (index >= 0) {
-		viewerVars.pvs.splice(index, 1);
-		delete viewerVars.pvData[pvName];
-		Plotly.deleteTraces(myDiv, index);
-	}
+    console.log("Removing " + pvName);
+    let index = _.indexOf(viewerVars.pvs, pvName);
+    if (index >= 0) {
+        viewerVars.pvs.splice(index, 1);
+        delete viewerVars.pvData[pvName];
+        Plotly.deleteTraces(myDiv, index);
+    }
 }
 
 function removeSelectedPVs() {
 	$("#removePVsModal").find(".checkboxlist").find("input:checked").each(function () {
 		removePVFromPlot($(this).val());
 	});
+}
+
+// Advanced view modal
+function showAdvancedViewModal() {
+	let buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
+	lastUnit = viewerVars.selectorOptions.buttons[buttonIndex].step;
+	lastInterval = viewerVars.selectorOptions.buttons[buttonIndex].count;
+	let modal = `
+		<div class="row align-items-center">
+			<div class="col-auto">
+				<label for="timeInput"><b>Enter your desired interval:</b></label>
+			</div>
+			<div class="col-auto">
+				<input id="timeInput" name="timeInput" type="number" min="1" value="${lastInterval}" class="form-control" style="width: 110px;" required onblur="validateInput(this)" />
+			</div>
+			<script>
+    			function validateInput(input) {
+					if (input.value < 1) {
+						input.value = 1;
+					}
+				}
+			</script>
+			<div class="col-auto">
+				<label for="timeInput"><b>Select your desired time unit:</b></label>
+			</div>
+			<div class="col-auto">
+				<select class="form-control" id="unitInput" style="width: 110px;">
+					<option value="second" ${lastUnit === 'second' ? 'selected' : ''}>second(s)</option>
+					<option value="minute" ${lastUnit === 'minute' ? 'selected' : ''}>minute(s)</option>
+					<option value="hour" ${lastUnit === 'hour' ? 'selected' : ''}>hour(s)</option>
+					<option value="day" ${lastUnit === 'day' ? 'selected' : ''}>day(s)</option>
+				</select>
+			</div>
+		</div>
+		`;
+	Mustache.parse(modal);
+	$('#advancedViewModal').find('.input-field').empty().append(Mustache.render(modal));
+	$('#advancedViewModal').modal('show');
+}
+
+function showAdvancedView() {
+	let step = document.getElementById('unitInput').value;
+	let count = parseInt(document.getElementById('timeInput').value);
+	updateLiveButton(step, count);
+}
+
+// Update the properties (step, count) of Live button
+function updateLiveButton(newStep, newCount) {
+    let buttonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
+	viewerVars.selectorOptions.buttons[buttonIndex].step = newStep;
+	viewerVars.selectorOptions.buttons[buttonIndex].count = newCount;
+	let layoutChanges = {'xaxis' : { 'autorange' : false}};
+	layoutChanges.xaxis.range = [viewerVars.start.getTime(), viewerVars.end.getTime()];
+	layoutChanges.xaxis.rangeselector = viewerVars.selectorOptions;
+	layoutChanges.xaxis.domain = myDiv.layout.xaxis.domain;
+	Plotly.relayout(myDiv, layoutChanges);
+}
+
+// Calculate the interval in millisecond
+function calculateLiveCount() {
+	let liveButtonIndex = viewerVars.selectorOptions.buttons.findIndex(button => button.label === "Live");
+	let liveButtonCount = viewerVars.selectorOptions.buttons[liveButtonIndex].count;
+	let liveButtonStep = viewerVars.selectorOptions.buttons[liveButtonIndex].step;
+	switch (liveButtonStep) {
+		case "second":
+			liveButtonCount *= 1000;
+			break;
+		case "minute":
+			liveButtonCount *= (60*1000);
+			break;
+		case "hour":
+			liveButtonCount *= (60*60*1000);
+			break;
+		// day
+		default:
+			liveButtonCount *= (24*60*60*1000);
+			break;
+	}
+	return liveButtonCount;
 }
 
 $(document).ready( function() {
@@ -1225,7 +1265,7 @@ $(document).ready( function() {
 			if(e.pageX >= leftOffset && e.pageX <= (leftOffset + bRect.width) && e.pageY >= topOffset && e.pageY <= (topOffset + bRect.height)) { // console.log("We are within the X-Axis label now");
 				try {
 					var ppl = xaxisDom.children[0].getBBox().x; var bnl = ppl + xaxisDom.children[0].getComputedTextLength();
-				} catch(e) {
+				} finally {
 					var ppl = xaxisDom.children[0].getBoundingClientRect().left + window.scrollX; var bnl = ppl + xaxisDom.children[0].getComputedTextLength();
 				}
 				if(e.pageX >= ppl && e.pageX <= bnl ) {
